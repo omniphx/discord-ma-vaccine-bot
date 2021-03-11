@@ -2,11 +2,11 @@ const fetch = require("node-fetch");
 
 const getCICSites = () => {
   return {
-    "Fenway Park": "shdk8qoyo0mxguo4",
-    "Hynes Convention Center": "shdk8qoyo0mxguo4",
-    "Gillette Stadium - East": "sbo91shys1qhb0gi100123871238",
-    "Gillette Stadium - West": "sbo91shys1qhb0gi100123871238",
-    "Reggie Lewis Center": "datygzcebcivrplwlvikuqrfp",
+    "Fenway Park": "fenway-hynes",
+    "Hynes Convention Center": "fenway-hynes",
+    "Gillette Stadium - East": "gillettestadium",
+    "Gillette Stadium - West": "gillettestadium",
+    "Reggie Lewis Center": "reggielewis",
   };
 };
 

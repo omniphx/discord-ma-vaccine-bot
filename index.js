@@ -5,7 +5,6 @@ require("dotenv").config();
 const bot = new Client();
 
 const { readFile, writeFile } = require("fs").promises;
-
 const { combine, timestamp, printf } = format;
 
 const myFormat = printf(({ level, message, timestamp }) => {
@@ -39,78 +38,98 @@ const cicLogger = createLogger({
   ],
 });
 
+const curativeLogger = createLogger({
+  transports: [
+    new transports.File({
+      filename: "curative.log",
+      format: combine(timestamp(), myFormat),
+    }),
+  ],
+});
+
 const { getCVSAvailability } = require("./cvs.js");
 const { getCICHealthAvailability, getCICSites } = require("./cic-health.js");
+const { getCurativeAvailability, getCurativeSites } = require("./curative.js");
 
 const CIC = "819026828143493130";
 const CVS = "818627725602324490";
+const CURATIVE = "818731446675832835";
 const VAX_FINDER = "";
-const CURRATIVE = "";
+
+const cicSites = getCICSites();
+const curativeSites = getCurativeSites();
 
 async function checkCVSAvailability(storedResults) {
-  try {
-    const results = await getCVSAvailability();
+  const results = await getCVSAvailability();
 
-    const newAvailability = Object.keys(results).filter(
-      (city) => storedResults[city] === false && results[city] === true
-    );
+  const newAvailability = Object.keys(results).filter(
+    (location) =>
+      storedResults[location] === false && results[location] === true
+  );
 
-    cvsLogger.info("CVS checking...");
-    cvsLogger.info(newAvailability);
-
-    if (newAvailability.length > 0) {
-      const embed = new MessageEmbed()
-        .setTitle(`New CVS availability`)
-        .setDescription(newAvailability.join(", "))
-        .setColor(0xa50000)
-        .setURL(
-          "https://www.cvs.com/vaccine/intake/store/cvd-schedule?icid=coronavirus-lp-vaccine-sd-statetool"
-        );
-      bot.channels.cache.get(CVS).send(embed);
-    }
-
-    return results;
-  } catch (error) {
-    cvsLogger.log(error);
+  if (newAvailability.length > 0) {
+    const embed = new MessageEmbed()
+      .setTitle(`New CVS availability`)
+      .setDescription(newAvailability.join(", "))
+      .setColor(0xa50000)
+      .setURL(
+        "https://www.cvs.com/vaccine/intake/store/cvd-schedule?icid=coronavirus-lp-vaccine-sd-statetool"
+      );
+    bot.channels.cache.get(CVS).send(embed);
   }
+
+  return results;
 }
 
 async function checkCICAvailability(storedResults) {
-  try {
-    const results = await getCICHealthAvailability();
+  const results = await getCICHealthAvailability();
 
-    const newAvailability = Object.keys(results).filter(
-      (city) => storedResults[city] === false && results[city] === true
-    );
+  const newAvailability = Object.keys(results).filter(
+    (location) =>
+      storedResults[location] === false && results[location] === true
+  );
 
-    cicLogger.info("CIC checking...");
-    cicLogger.info(newAvailability);
+  newAvailability.forEach((availability) => {
+    const id = cicSites[availability];
+    const embed = new MessageEmbed()
+      .setTitle(`CIC Health: New vaccine window(s)`)
+      .setDescription(availability)
+      .setColor(0xa50000)
+      .setURL(`https://home.color.com/vaccine/register/${id}`);
+    bot.channels.cache.get(CIC).send(embed);
+  });
 
-    const sites = getCICSites();
-
-    newAvailability.forEach((availability) => {
-      const id = sites[availability];
-      const embed = new MessageEmbed()
-        .setTitle(`CIC Health: New vaccine window(s)`)
-        .setDescription(availability)
-        .setColor(0xa50000)
-        .setURL(
-          `https://home.color.com/vaccine/register/${id}/vaccination-history`
-        );
-      bot.channels.cache.get(CIC).send(embed);
-    });
-
-    return results;
-  } catch (error) {
-    cicLogger.log(error);
-  }
+  return results;
 }
 
-async function checkAvailability(file, callback, waitTime) {
+async function checkCurativeAvailability(storedResults) {
+  const results = await getCurativeAvailability();
+
+  const newAvailability = Object.keys(results).filter(
+    (location) =>
+      storedResults[location] === false && results[location] === true
+  );
+
+  newAvailability.forEach((availability) => {
+    const embed = new MessageEmbed()
+      .setTitle(`Curative: New vaccine window(s)`)
+      .setDescription(curativeSites[availability])
+      .setColor(0xa50000)
+      .setURL(`https://curative.com/sites/${availability}`);
+    bot.channels.cache.get(CURATIVE).send(embed);
+  });
+
+  return newAvailability;
+}
+
+async function checkAvailability(file, callback, logger, waitTime) {
   try {
     const store = await readFile(file, { encoding: "utf8" });
     const storedResults = JSON.parse(store);
     const results = await callback(storedResults);
+
+    logger.info("Checking...");
+    logger.info(JSON.stringify(results));
 
     await writeFile(file, JSON.stringify({ ...storedResults, ...results }), {
       encoding: "utf8",
@@ -119,15 +138,26 @@ async function checkAvailability(file, callback, waitTime) {
     botLogger.info(error);
   } finally {
     setTimeout(() => {
-      checkAvailability(file, callback, waitTime);
+      checkAvailability(file, callback, logger, waitTime);
     }, waitTime);
   }
 }
 
 (async () => {
   bot.on("ready", async () => {
-    checkAvailability("cvs.json", checkCVSAvailability, 30000);
-    checkAvailability("cic-health.json", checkCICAvailability, 30000);
+    checkAvailability("cvs.json", checkCVSAvailability, cvsLogger, 15000);
+    checkAvailability(
+      "cic-health.json",
+      checkCICAvailability,
+      cicLogger,
+      30000
+    );
+    checkAvailability(
+      "curative.json",
+      checkCurativeAvailability,
+      curativeLogger,
+      10000
+    );
   });
   bot.on("message", async (message) => {
     try {
@@ -157,7 +187,6 @@ async function checkAvailability(file, callback, waitTime) {
       // CIC-Health
       if (command === "!cic-availability") {
         const availabilityResults = await getCICHealthAvailability();
-        const sites = getCICSites();
         const availabilityLocations = Object.keys(availabilityResults).filter(
           (city) => availabilityResults[city] === true
         );
@@ -171,7 +200,31 @@ async function checkAvailability(file, callback, waitTime) {
             availabilityLocations
               .map(
                 (location) =>
-                  `[${location}](https://home.color.com/vaccine/register/${sites[location]}/vaccination-history)`
+                  `[${location}](https://home.color.com/vaccine/register/${cicSites[location]})`
+              )
+              .join("\n")
+          )
+          .setColor(0xa50000);
+        message.channel.send(embed);
+      }
+
+      // Curative
+      if (message.content === "!curative-availability") {
+        const availabilityResults = await getCurativeAvailability();
+        const availabilityLocations = Object.keys(availabilityResults).filter(
+          (city) => availabilityResults[city] === true
+        );
+        const embed = new MessageEmbed()
+          .setTitle(
+            availabilityLocations.length > 0
+              ? "Curative has availability"
+              : "No Curative availability"
+          )
+          .setDescription(
+            availabilityLocations
+              .map(
+                (location) =>
+                  `[${curativeSites[location]}](https://curative.com/sites/${location})`
               )
               .join("\n")
           )
