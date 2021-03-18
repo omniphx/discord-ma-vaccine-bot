@@ -119,7 +119,7 @@ async function checkCurativeAvailability(storedResults) {
     bot.channels.cache.get(CURATIVE).send(embed);
   });
 
-  return newAvailability;
+  return results;
 }
 
 async function checkAvailability(file, callback, logger, waitTime) {
@@ -145,7 +145,7 @@ async function checkAvailability(file, callback, logger, waitTime) {
 
 (async () => {
   bot.on("ready", async () => {
-    checkAvailability("cvs.json", checkCVSAvailability, cvsLogger, 15000);
+    checkAvailability("cvs.json", checkCVSAvailability, cvsLogger, 5000);
     checkAvailability(
       "cic-health.json",
       checkCICAvailability,
@@ -156,7 +156,7 @@ async function checkAvailability(file, callback, logger, waitTime) {
       "curative.json",
       checkCurativeAvailability,
       curativeLogger,
-      10000
+      30000
     );
   });
   bot.on("message", async (message) => {
